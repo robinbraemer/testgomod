@@ -1,0 +1,102 @@
+# Automatically added by Minekube.
+#apiVersion: v1
+#kind: PersistentVolumeClaim
+#metadata:
+#  name: my-app-pvc
+#  namespace: testegg
+#spec:
+#  accessModes:
+#    - ReadWriteOnce
+#  resources:
+#    requests:
+#      storage: 1Gi
+#---
+# ssh-ing into use: kubectl exec -i -t -n testegg my-app -c game -- sh -c "clear; (bash || ash || sh)"
+
+# Although you define your Game as a Pod, this Pod will not be deployed as is,
+# Minekube will automatically manage accompanying resources like storage and network for Minekube Providers
+# who can also decide how a Game is scheduled (Packed or Distributed) on their infrastructure and more, which
+# you don't need to worry about. You can focus on defining your Game and let Minekube handle the rest.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: game # Enforced name "game" by Minekube
+  # namespace is enforced by Minekube.
+  annotations:
+    app.kubernetes.io/description: |
+      If your Game does not need to persist data between restarts, you do need to deal with
+      persistent volumes, volume mounts, or initContainers. But if your Game does need to persist data,
+      read on.
+      
+      This Pod uses initContainers to copy files from an image to a persistent volume before the main container starts. 
+      This is done to initialize the volume with data. Mounting a volume overwrites any existing files in the image, 
+      so this method ensures the copied files are preserved in the volume for persistence. 
+      This is particularly useful when the image needs to use files in the same directory that needs to be persisted.
+      It also allows for updating files in the volume without rebuilding the image, ensuring a consistent state of 
+      expected files on each startup. However, care should be taken not to overwrite existing files in the volume when 
+      the Game has already been started once to avoid data loss. Binary files can be overwritten as expected, or the
+      initContainer can be extended to check if a file already exists and skip the copy if it does, as it might be modified
+      by the Game or the user.
+spec:
+  terminationGracePeriodSeconds: 0
+  initContainers:
+    - name: copy2pv
+      image: busybox
+      command: [ 'sh', '-c', 'echo "hello k8s" > /hello.txt && cp -r /hello.txt /data' ]
+      resources:
+        requests:
+          # Automatically added to each container by Minekube.
+          ephemeral-storage: 1Gi
+        limits:
+          # Automatically added to each container by Minekube.
+          ephemeral-storage: 10Gi
+      volumeMounts:
+        - name: persistent
+          mountPath: /data/game
+  containers:
+    # You game container. Add any additional containers that your Game needs.
+    - name: game
+      image: busybox
+      command: [ 'sh', '-c', 'cat /data/hello.txt && sleep 3600' ]
+      ports:
+        - name: minecraft
+          containerPort: 25565
+      volumeMounts:
+        - name: persistent
+          mountPath: /data # The container will see the contents of the persistent volume here.
+          # To future-proof your Pod, use subPath to mount the persistent volume to a subdirectory within the persistent volume.
+          # This way, you can add more directories to the persistent volume in the future use the storage for additional containers like a database.
+          subPath: /game
+      resources:
+        requests:
+          # Automatically added to each container by Minekube.
+          ephemeral-storage: "1Gi"
+        limits:
+          # Automatically added to each container by Minekube.
+          ephemeral-storage: 10Gi
+    # To allow users to manage Game files from the Minekube UI you need to run a WebDAV server.
+    # Minekube will look for any port named "webdav" in the Pod and use it securely through the Minekube UI.
+    # Ensure to mount the directory that you want to expose as root directory through WebDAV.
+    - name: minekube-webdav
+      image: ghcr.io/minekube/games/webdav:latest
+      workingDir: /data
+      ports:
+        - name: webdav
+          containerPort: 8081
+      volumeMounts:
+        - name: persistent
+          mountPath: /data
+      resources:
+        requests:
+          # Automatically added to each container by Minekube.
+          ephemeral-storage: 1Gi
+        limits:
+          # Automatically added to each container by Minekube.
+          ephemeral-storage: 10Gi
+
+  volumes:
+    - name: persistent # Optional, automatically set to the managed PVC name by Minekube.
+      # Automatically added by Minekube.
+      #      persistentVolumeClaim:
+      #        claimName: my-app-pvc
+      # Only emptyDir to be specified manually is supported by Minekube.
