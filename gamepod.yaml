@@ -52,7 +52,8 @@ spec:
           ephemeral-storage: 10Gi
       volumeMounts:
         - name: persistent
-          mountPath: /data/game
+          mountPath: /data
+          subPath: game
   containers:
     # You game container. Add any additional containers that your Game needs.
     - name: game
