@@ -86,6 +86,7 @@ spec:
       volumeMounts:
         - name: persistent
           mountPath: /data
+          subPath: game
       resources:
         requests:
           # Automatically added to each container by Minekube.
